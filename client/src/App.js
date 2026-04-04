@@ -102,7 +102,7 @@ export default function App() {
   return (
     <div className="app-container">
 
-      <h1>📊 Portfolio Dashboard</h1>
+     <h1>📊 US Portfolio Master Pro</h1>
 
       <div className="main-grid">
 
