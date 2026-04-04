@@ -48,22 +48,34 @@ export default function App() {
         }
       } catch (e) { console.log("Polygon Fallback"); }
 
-      // 3. ดึงประวัติปันผล (EODHD) - แก้ปัญหา CORS ด้วย Proxy
+      // 3. ดึงประวัติปันผล (EODHD) - ระบบสำรอง Proxy 2 ชั้น
       try {
-        const eodUrl = encodeURIComponent(`https://eodhd.com/api/div/${symbol}.US?api_token=${EODHD_KEY}&fmt=json`);
-        const res = await fetch(`https://api.allorigins.win/get?url=${eodUrl}`);
-        if (res.ok) {
-          const proxyData = await res.json();
-          const d = JSON.parse(proxyData.contents);
-          if (Array.isArray(d) && d.length > 0) {
-            const annualDiv = d.slice(0, 4).reduce((sum, item) => sum + parseFloat(item.value), 0);
-            fetchedDivYield = (annualDiv / fetchedPrice) * 100;
-            const recentD = parseFloat(d[0].value);
-            const oldD = parseFloat(d[d.length - 1].value);
-            fetchedDivGrowth = (Math.pow(recentD / oldD, 1 / 10) - 1) * 100;
-          }
+        const targetUrl = `https://eodhd.com/api/div/${symbol}.US?api_token=${EODHD_KEY}&fmt=json`;
+        
+        // ลองใช้ Proxy ตัวที่ 1 (AllOrigins)
+        let res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`);
+        
+        // ถ้า Proxy ตัวแรกพัง (ไม่ใช่ 200 OK) ให้ลองตัวที่ 2 (CorsProxy.io)
+        if (!res.ok) {
+          console.log("AllOrigins failed, trying CorsProxy.io...");
+          res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
         }
-      } catch (e) { console.log("EODHD CORS Fallback"); }
+
+        const dataObj = await res.json();
+        
+        // จัดการรูปแบบข้อมูล (AllOrigins จะห่อข้อมูลไว้ใน .contents แต่ CorsProxy จะส่งมาตรงๆ)
+        let d = dataObj.contents ? JSON.parse(dataObj.contents) : dataObj;
+
+        if (Array.isArray(d) && d.length > 0) {
+          const annualDiv = d.slice(0, 4).reduce((sum, item) => sum + parseFloat(item.value), 0);
+          fetchedDivYield = (annualDiv / fetchedPrice) * 100;
+          const recentD = parseFloat(d[0].value);
+          const oldD = parseFloat(d[d.length - 1].value);
+          fetchedDivGrowth = (Math.pow(recentD / oldD, 1 / 10) - 1) * 100;
+        }
+      } catch (e) { 
+        console.error("EODHD all proxies failed, using default dividend data");
+      }
 
       const cleanVal = (val) => (isNaN(val) || !isFinite(val)) ? 0 : val.toFixed(2);
 
