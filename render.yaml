@@ -1,0 +1,19 @@
+# Render Blueprint - US Portfolio Grow
+
+services:
+  - type: web
+    name: us-portfolio-grow
+    env: node
+    region: singapore
+    plan: free
+    buildCommand: cd client && npm install && npm run build && cd ../server && npm install
+    startCommand: cd server && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: POLYGON_API_KEY
+        sync: false
+      - key: EODHD_API_KEY
+        sync: false
+      - key: FINNHUB_API_KEY
+        sync: false

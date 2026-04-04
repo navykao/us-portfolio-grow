@@ -1,0 +1,20 @@
+{
+  "name": "us-portfolio-grow",
+  "version": "1.0.0",
+  "description": "คำนวณผลตอบแทนและเงินปันผลจากการลงทุนในหุ้นอเมริกา",
+  "scripts": {
+    "start": "cd server && npm start",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm start",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "build": "cd client && npm install && npm run build",
+    "install-all": "npm install && cd server && npm install && cd ../client && npm install",
+    "render-build": "cd client && npm install && npm run build && cd ../server && npm install"
+  },
+  "keywords": ["portfolio", "dividend", "stocks", "investment", "usa"],
+  "author": "navykao",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

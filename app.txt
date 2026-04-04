@@ -1,0 +1,462 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+
+// API Base URL
+const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5000';
+
+function App() {
+  // State
+  const [stocks, setStocks] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [years, setYears] = useState(15);
+  const [loading, setLoading] = useState(false);
+  const [taxRate] = useState(10); // Withholding Tax 10%
+
+  // คำนวณผลรวม
+  const calculateTotals = useCallback(() => {
+    let totalInvest = 0;
+    let totalDividendYearly = 0;
+    let totalValue = 0;
+
+    stocks.forEach(stock => {
+      const shares = stock.shares || 0;
+      const avgCost = stock.avgCost || 0;
+      const price = stock.price || 0;
+      const divYield = stock.divYield || 0;
+
+      const invested = shares * avgCost;
+      const currentValue = shares * price;
+      const yearlyDiv = currentValue * (divYield / 100);
+
+      totalInvest += invested;
+      totalValue += currentValue;
+      totalDividendYearly += yearlyDiv;
+    });
+
+    const afterTaxDiv = totalDividendYearly * (1 - taxRate / 100);
+    const yieldOnCost = totalInvest > 0 ? (afterTaxDiv / totalInvest) * 100 : 0;
+
+    return {
+      totalInvest,
+      totalValue,
+      totalDividendYearly: afterTaxDiv,
+      yieldOnCost,
+      gain: totalValue - totalInvest,
+      gainPercent: totalInvest > 0 ? ((totalValue - totalInvest) / totalInvest) * 100 : 0
+    };
+  }, [stocks, taxRate]);
+
+  // คำนวณกราฟการเติบโต
+  const calculateGrowthData = useCallback(() => {
+    const totals = calculateTotals();
+    const data = [];
+    let principal = totals.totalInvest;
+    let dividendAccum = 0;
+    const growthRate = 0.07; // สมมติการเติบโต 7% ต่อปี
+    const divGrowthRate = 0.05; // ปันผลโต 5% ต่อปี
+    let yearlyDiv = totals.totalDividendYearly;
+
+    for (let year = 0; year <= years; year++) {
+      if (year === 0) {
+        data.push({
+          year: `ปี ${year}`,
+          principal: Math.round(principal),
+          dividend: 0,
+          total: Math.round(principal)
+        });
+      } else {
+        principal = principal * (1 + growthRate);
+        yearlyDiv = yearlyDiv * (1 + divGrowthRate);
+        dividendAccum += yearlyDiv;
+        
+        data.push({
+          year: `ปี ${year}`,
+          principal: Math.round(principal),
+          dividend: Math.round(dividendAccum),
+          total: Math.round(principal + dividendAccum)
+        });
+      }
+    }
+    return data;
+  }, [calculateTotals, years]);
+
+  // คำนวณกราฟปันผลรายปี
+  const calculateDividendData = useCallback(() => {
+    const totals = calculateTotals();
+    const data = [];
+    let yearlyDiv = totals.totalDividendYearly;
+    const growthRate = 0.05;
+
+    for (let year = 1; year <= years; year++) {
+      data.push({
+        year: `ปี ${year}`,
+        dividend: Math.round(yearlyDiv)
+      });
+      yearlyDiv = yearlyDiv * (1 + growthRate);
+    }
+    return data;
+  }, [calculateTotals, years]);
+
+  // ค้นหาหุ้น
+  useEffect(() => {
+    if (searchQuery.length < 1) {
+      setSearchResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/search?q=${searchQuery}`);
+        const data = await res.json();
+        setSearchResults(data);
+      } catch (e) {
+        console.error('Search error:', e);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // เพิ่มหุ้น
+  const addStock = async (symbol, description) => {
+    if (stocks.find(s => s.symbol === symbol)) {
+      alert('หุ้นนี้มีในรายการแล้ว');
+      return;
+    }
+
+    setLoading(true);
+    setSearchQuery('');
+    setSearchResults([]);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/stock/${symbol}`);
+      const data = await res.json();
+
+      if (data.error) {
+        alert('ไม่พบข้อมูลหุ้น: ' + symbol);
+        setLoading(false);
+        return;
+      }
+
+      // คำนวณ Dividend Yield จากข้อมูลปันผล
+      let divYield = 0;
+      if (data.dividends && data.dividends.length > 0) {
+        // รวมปันผล 12 เดือนย้อนหลัง
+        const recentDivs = data.dividends.slice(0, 12);
+        const totalDiv = recentDivs.reduce((sum, d) => sum + (d.value || d.dividend || 0), 0);
+        divYield = data.price > 0 ? (totalDiv / data.price) * 100 : 0;
+      }
+
+      setStocks(prev => [...prev, {
+        symbol: data.symbol,
+        name: data.companyName || description || symbol,
+        price: data.price,
+        change: data.change,
+        changePercent: data.changesPercentage,
+        shares: 30,
+        avgCost: Math.round(data.price),
+        divYield: Math.round(divYield * 10) / 10 || 3,
+        dividends: data.dividends
+      }]);
+    } catch (e) {
+      console.error('Error adding stock:', e);
+      alert('เกิดข้อผิดพลาดในการดึงข้อมูล');
+    }
+
+    setLoading(false);
+  };
+
+  // ลบหุ้น
+  const removeStock = (symbol) => {
+    setStocks(prev => prev.filter(s => s.symbol !== symbol));
+  };
+
+  // อัพเดทค่าหุ้น
+  const updateStock = (symbol, field, value) => {
+    setStocks(prev => prev.map(s => 
+      s.symbol === symbol ? { ...s, [field]: parseFloat(value) || 0 } : s
+    ));
+  };
+
+  const totals = calculateTotals();
+  const growthData = calculateGrowthData();
+  const dividendData = calculateDividendData();
+
+  // Format ตัวเลข
+  const formatNumber = (num) => {
+    if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toFixed(2);
+  };
+
+  const formatCurrency = (num) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(num);
+  };
+
+  return (
+    <div className="app">
+      {/* Header */}
+      <header className="header">
+        <h1>📊 Portfolio Grow US</h1>
+        <p>คำนวณผลตอบแทนและเงินปันผลจากการลงทุนในหุ้นอเมริกา</p>
+      </header>
+
+      <div className="main-content">
+        {/* Left Panel */}
+        <div className="left-panel">
+          {/* Investment Period */}
+          <div className="card">
+            <div className="slider-container">
+              <div className="slider-label">
+                <span>จำนวนปีที่ลงทุน</span>
+                <span style={{ color: '#fbbf24', fontWeight: '600' }}>{years}</span>
+              </div>
+              <input
+                type="range"
+                className="slider"
+                min="1"
+                max="40"
+                value={years}
+                onChange={(e) => setYears(parseInt(e.target.value))}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#6b7280', marginTop: '4px' }}>
+                <span>1 ปี</span>
+                <span>{years} ปี</span>
+                <span>40 ปี</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Stock List */}
+          <div className="card">
+            <h3 className="card-title">📈 รายการหุ้นในพอร์ต</h3>
+            
+            {/* Search */}
+            <div className="search-container">
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="ค้นหาหุ้น เช่น AAPL, VOO, SCHD..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value.toUpperCase())}
+              />
+              {searchResults.length > 0 && (
+                <div className="search-results">
+                  {searchResults.map((result, idx) => (
+                    <div 
+                      key={idx}
+                      className="search-result-item"
+                      onClick={() => addStock(result.symbol, result.description)}
+                    >
+                      <strong style={{ color: '#fbbf24' }}>{result.symbol}</strong>
+                      <span style={{ color: '#9ca3af', fontSize: '0.85rem', marginLeft: '8px' }}>
+                        {result.description}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {loading && (
+              <div className="loading">
+                <div className="spinner"></div>
+                <span>กำลังโหลดข้อมูล...</span>
+              </div>
+            )}
+
+            {/* Stock Items */}
+            <div className="stock-list" style={{ marginTop: '16px' }}>
+              {stocks.map((stock) => (
+                <div key={stock.symbol} className="stock-item">
+                  <div className="stock-info">
+                    <div className="stock-symbol">
+                      {stock.symbol}
+                      <span style={{ 
+                        fontSize: '0.75rem', 
+                        marginLeft: '8px',
+                        color: stock.changePercent >= 0 ? '#10b981' : '#ef4444'
+                      }}>
+                        {stock.changePercent >= 0 ? '▲' : '▼'} {Math.abs(stock.changePercent || 0).toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className="stock-name">{stock.name}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '4px' }}>
+                      ต้นทุนเฉลี่ย: ${stock.avgCost} × {stock.shares} = ${(stock.avgCost * stock.shares).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="stock-inputs">
+                    <div>
+                      <label style={{ fontSize: '0.7rem', color: '#9ca3af' }}>จำนวน</label>
+                      <input
+                        type="number"
+                        value={stock.shares}
+                        onChange={(e) => updateStock(stock.symbol, 'shares', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.7rem', color: '#9ca3af' }}>ต้นทุน $</label>
+                      <input
+                        type="number"
+                        value={stock.avgCost}
+                        onChange={(e) => updateStock(stock.symbol, 'avgCost', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.7rem', color: '#9ca3af' }}>Yield %</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={stock.divYield}
+                        onChange={(e) => updateStock(stock.symbol, 'divYield', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <button className="remove-btn" onClick={() => removeStock(stock.symbol)}>×</button>
+                </div>
+              ))}
+
+              {stocks.length === 0 && !loading && (
+                <div style={{ textAlign: 'center', padding: '30px', color: '#6b7280' }}>
+                  <p>🔍 ค้นหาและเพิ่มหุ้นเพื่อเริ่มคำนวณ</p>
+                  <p style={{ fontSize: '0.85rem', marginTop: '8px' }}>
+                    ลองค้นหา: VOO, SCHD, QQQI, AAPL, MSFT
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Panel */}
+        <div className="right-panel">
+          {/* Summary Cards */}
+          <div className="summary-grid">
+            <div className="summary-card">
+              <div className="label">Yield เฉลี่ย</div>
+              <div className="value gold">{totals.yieldOnCost.toFixed(2)}%</div>
+            </div>
+            <div className="summary-card">
+              <div className="label">Yield ปันผล</div>
+              <div className="value green">{stocks.length > 0 ? (stocks.reduce((sum, s) => sum + s.divYield, 0) / stocks.length).toFixed(2) : '0.00'}%</div>
+            </div>
+            <div className="summary-card">
+              <div className="label">กำไร/ขาดทุน</div>
+              <div className="value" style={{ color: totals.gainPercent >= 0 ? '#10b981' : '#ef4444' }}>
+                {totals.gainPercent >= 0 ? '+' : ''}{totals.gainPercent.toFixed(2)}%
+              </div>
+            </div>
+            <div className="summary-card">
+              <div className="label">Yield on Cost</div>
+              <div className="value blue">{totals.yieldOnCost.toFixed(2)}%</div>
+            </div>
+          </div>
+
+          <div style={{ 
+            background: '#1f2937', 
+            borderRadius: '12px', 
+            padding: '12px 16px',
+            fontSize: '0.85rem',
+            color: '#9ca3af',
+            border: '1px solid #374151'
+          }}>
+            * ค่าใช้จ่ายที่แสดงถูกหักภาษี: 0.00% × หลังจากหักภาษีต้นทาง: {taxRate}% × หลังจาก Withholding Tax 10%
+          </div>
+
+          {/* Growth Chart */}
+          <div className="chart-container">
+            <h3 className="chart-title">📊 กราฟการเติบโต</h3>
+            <div className="chart-legend">
+              <div className="legend-item">
+                <div className="legend-dot" style={{ background: '#fbbf24' }}></div>
+                <span>มูลค่าพอร์ต</span>
+              </div>
+              <div className="legend-item">
+                <div className="legend-dot" style={{ background: '#10b981' }}></div>
+                <span>เงินปันผลสะสม</span>
+              </div>
+              <div className="legend-item">
+                <div className="legend-dot" style={{ background: '#3b82f6' }}></div>
+                <span>เงินลงทุนสะสม</span>
+              </div>
+            </div>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={growthData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                <XAxis dataKey="year" stroke="#9ca3af" fontSize={12} />
+                <YAxis stroke="#9ca3af" fontSize={12} tickFormatter={(val) => formatNumber(val)} />
+                <Tooltip 
+                  contentStyle={{ 
+                    background: '#1f2937', 
+                    border: '1px solid #374151',
+                    borderRadius: '8px',
+                    color: '#fff'
+                  }}
+                  formatter={(value) => ['$' + value.toLocaleString()]}
+                />
+                <Line type="monotone" dataKey="total" stroke="#fbbf24" strokeWidth={2} dot={false} name="มูลค่ารวม" />
+                <Line type="monotone" dataKey="dividend" stroke="#10b981" strokeWidth={2} dot={false} name="ปันผลสะสม" />
+                <Line type="monotone" dataKey="principal" stroke="#3b82f6" strokeWidth={2} dot={false} name="เงินต้น" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Dividend Chart */}
+          <div className="chart-container">
+            <h3 className="chart-title">💰 กราฟเงินปันผลรายปี (หลังหักภาษี)</h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={dividendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                <XAxis dataKey="year" stroke="#9ca3af" fontSize={11} />
+                <YAxis stroke="#9ca3af" fontSize={12} tickFormatter={(val) => formatNumber(val)} />
+                <Tooltip 
+                  contentStyle={{ 
+                    background: '#1f2937', 
+                    border: '1px solid #374151',
+                    borderRadius: '8px',
+                    color: '#fff'
+                  }}
+                  formatter={(value) => ['$' + value.toLocaleString(), 'ปันผล']}
+                />
+                <Bar dataKey="dividend" fill="#fbbf24" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Tips */}
+          <div className="tips-section">
+            <h3>💡 คำแนะนำการลงทุน</h3>
+            <ul className="tips-list">
+              <li>กระจายความเสี่ยงด้วยการลงทุนในหุ้นหลายตัวจากต่างอุตสาหกรรม</li>
+              <li>สะสมเงินปันผลแบบสม่ำเสมอ (DCA) ช่วยลดความเสี่ยงจากความผันผวน</li>
+              <li>นำเงินปันผลไปลงทุนต่อ (DRIP) เพื่อสร้างดอกเบี้ยทบต้น</li>
+              <li>ศึกษาข้อมูลบริษัทก่อนตัดสินใจลงทุน</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <footer style={{ 
+        textAlign: 'center', 
+        padding: '30px', 
+        color: '#6b7280',
+        borderTop: '1px solid #374151',
+        marginTop: '40px',
+        fontSize: '0.85rem'
+      }}>
+        <p>📊 Portfolio Grow US - คำนวณผลตอบแทนและเงินปันผลจากการลงทุนในหุ้นอเมริกา</p>
+        <p style={{ marginTop: '8px' }}>ข้อมูลราคาหุ้นจาก Polygon, EODHD, Finnhub</p>
+      </footer>
+    </div>
+  );
+}
+
+export default App;
