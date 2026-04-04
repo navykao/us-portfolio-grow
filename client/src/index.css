@@ -81,3 +81,70 @@ body {
   .main-grid { grid-template-columns: 1fr; }
   .summary-grid { grid-template-columns: 1fr; }
 }
+
+/* เพิ่มเติมจากของเดิม */
+.card-header-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.allocation-badge {
+  font-size: 0.8rem;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-weight: bold;
+}
+.allocation-badge.warning { background: #ef4444; color: white; }
+.allocation-badge.success { background: #10b981; color: white; }
+
+.stock-item-expanded {
+  background: #0f172a;
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  border: 1px solid #334155;
+}
+
+.stock-main-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.alloc-input {
+  width: 60px;
+  padding: 4px;
+  background: #1e293b;
+  border: 1px solid #3b82f6;
+  color: #fff;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.percent-unit { color: #94a3b8; font-size: 0.9rem; margin-right: auto; }
+
+.btn-remove-small {
+  background: none;
+  border: none;
+  color: #ef4444;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 5px;
+}
+
+.stock-sub-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.warning-text {
+  color: #fbbf24;
+  font-size: 0.75rem;
+  margin-top: 10px;
+  text-align: center;
+}
