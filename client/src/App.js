@@ -107,7 +107,7 @@ export default function App() {
       <div className="main-grid">
 
         {/* LEFT */}
-        <div className="card">
+        <div className="card chart-card">
 
           <h3>ตั้งค่า</h3>
 
