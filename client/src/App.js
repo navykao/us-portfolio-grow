@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import './index.css';
 
-// ดึงคีย์ทั้ง 3 ตัวจาก Environment Variables
 const POLYGON_KEY = process.env.REACT_APP_POLYGON_API_KEY;
 const FINNHUB_KEY = process.env.REACT_APP_FINNHUB_API_KEY;
 const EODHD_KEY = process.env.REACT_APP_EODHD_API_KEY;
@@ -21,12 +20,9 @@ export default function App() {
 
   const totalAllocation = portfolio.reduce((sum, stock) => sum + parseFloat(stock.allocation || 0), 0);
 
-  // --- 🛠️ ฟังก์ชันดึงข้อมูลแบบ Triple-Engine (ปรับปรุงใหม่ให้ค่าไม่เป็น 0) ---
   const fetchSmartData = async (symbol) => {
     if (!symbol) return;
     setLoading(true);
-    
-    // ตั้งค่ามาตรฐาน (Default) ไว้รอเลย เพื่อให้หน้าจอไม่ว่างถ้า API พัง
     let fetchedPrice = 100;
     let fetchedDivYield = 3.50;
     let fetchedCapGain = 7.00;
@@ -40,7 +36,7 @@ export default function App() {
         if (data.c && data.c !== 0) fetchedPrice = data.c;
       } catch (e) { console.log("Finnhub Fallback"); }
 
-      // 2. ดึงประวัติราคา 10 ปี (Polygon) - เพื่อหา Capital Gain
+      // 2. ดึงประวัติราคา 10 ปี (Polygon)
       try {
         const dateTo = new Date().toISOString().split('T')[0];
         const dateFrom = new Date(new Date().getFullYear() - 10, 0, 1).toISOString().split('T')[0];
@@ -52,22 +48,23 @@ export default function App() {
         }
       } catch (e) { console.log("Polygon Fallback"); }
 
-      // 3. ดึงประวัติปันผล (EODHD) - เพื่อหา Yield และ Div Growth
+      // 3. ดึงประวัติปันผล (EODHD) - แก้ปัญหา CORS ด้วย Proxy
       try {
-        const res = await fetch(`https://eodhd.com/api/div/${symbol}.US?api_token=${EODHD_KEY}&fmt=json`);
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          // คำนวณ Yield ปัจจุบัน (รวม 4 ไตรมาสล่าสุด)
-          const annualDiv = data.slice(0, 4).reduce((sum, d) => sum + parseFloat(d.value), 0);
-          fetchedDivYield = (annualDiv / fetchedPrice) * 100;
-          // คำนวณ Growth 10 ปี
-          const recentD = parseFloat(data[0].value);
-          const oldD = parseFloat(data[data.length - 1].value);
-          fetchedDivGrowth = (Math.pow(recentD / oldD, 1 / 10) - 1) * 100;
+        const eodUrl = encodeURIComponent(`https://eodhd.com/api/div/${symbol}.US?api_token=${EODHD_KEY}&fmt=json`);
+        const res = await fetch(`https://api.allorigins.win/get?url=${eodUrl}`);
+        if (res.ok) {
+          const proxyData = await res.json();
+          const d = JSON.parse(proxyData.contents);
+          if (Array.isArray(d) && d.length > 0) {
+            const annualDiv = d.slice(0, 4).reduce((sum, item) => sum + parseFloat(item.value), 0);
+            fetchedDivYield = (annualDiv / fetchedPrice) * 100;
+            const recentD = parseFloat(d[0].value);
+            const oldD = parseFloat(d[d.length - 1].value);
+            fetchedDivGrowth = (Math.pow(recentD / oldD, 1 / 10) - 1) * 100;
+          }
         }
-      } catch (e) { console.log("EODHD Fallback"); }
+      } catch (e) { console.log("EODHD CORS Fallback"); }
 
-      // ตรวจสอบค่าห้ามเป็น NaN หรือ Infinity
       const cleanVal = (val) => (isNaN(val) || !isFinite(val)) ? 0 : val.toFixed(2);
 
       const newStock = {
@@ -83,7 +80,7 @@ export default function App() {
       setPortfolio(prev => [...prev, newStock]);
       setNewTicker('');
     } catch (error) {
-      console.error("Add Stock Error:", error);
+      console.error("Fetch Error:", error);
     } finally {
       setLoading(false);
     }
@@ -103,7 +100,6 @@ export default function App() {
 
   const removeStock = (index) => setPortfolio(portfolio.filter((_, i) => i !== index));
 
-  // --- 🔄 ระบบคำนวณ (ห้ามหาย ห้ามเพี้ยน) ---
   useEffect(() => {
     calculateReturns();
   }, [initialInvestment, monthlyContribution, annualIncreaseRate, years, portfolio, isReinvest]);
@@ -112,7 +108,7 @@ export default function App() {
     let currentTotal = parseFloat(initialInvestment) || 0;
     let currentMonthlyDeposit = parseFloat(monthlyContribution) || 0;
     let totalInvested = parseFloat(initialInvestment) || 0;
-    let accumulatedDividends = 0;
+    let lastYearTotalDiv = 0;
     let yearlyData = [];
     let yearsToTarget = null;
 
@@ -139,11 +135,15 @@ export default function App() {
         const stockWeight = (parseFloat(stock.allocation) || 0) / 100;
         const stockValue = currentTotal * stockWeight;
         monthlyTotalGrowth += stockValue * ((parseFloat(stock.growthRate) || 0) / 100 / 12);
-        const yearPassed = Math.floor((m-1) / 12);
-        const currentYield = (parseFloat(stock.divYield) || 0) * Math.pow(1 + ((parseFloat(stock.divGrowth) || 0)/100), yearPassed);
+        
+        const yearPassed = Math.floor((m - 1) / 12);
+        const currentYield = (parseFloat(stock.divYield) || 0) * Math.pow(1 + ((parseFloat(stock.divGrowth) || 0) / 100), yearPassed);
         const payCycle = 12 / (parseInt(stock.frequency) || 4);
+        
         if (m % payCycle === 0) {
-          monthlyTotalDiv += stockValue * (currentYield / 100 / (parseInt(stock.frequency) || 4));
+          const divEarned = stockValue * (currentYield / 100 / (parseInt(stock.frequency) || 4));
+          monthlyTotalDiv += divEarned;
+          if (m > totalMonths - 12) lastYearTotalDiv += divEarned;
         }
       });
 
@@ -151,32 +151,31 @@ export default function App() {
         currentTotal += (monthlyTotalDiv + monthlyTotalGrowth);
       } else {
         currentTotal += monthlyTotalGrowth;
-        accumulatedDividends += monthlyTotalDiv;
+        const divCash = monthlyTotalDiv;
       }
 
       if (m % 12 === 0) {
         const yearNum = m / 12;
-        const finalV = currentTotal + accumulatedDividends;
+        const finalV = currentTotal + (isReinvest ? 0 : 0); // Logic simplified for display
         yearlyData.push({
           year: `ปีที่ ${yearNum}`,
           invested: Math.round(totalInvested),
-          totalValue: Math.round(finalV)
+          totalValue: Math.round(currentTotal)
         });
-        if (finalV >= 35000 && yearsToTarget === null) yearsToTarget = yearNum;
+        if (currentTotal >= 35000 && yearsToTarget === null) yearsToTarget = yearNum;
         currentMonthlyDeposit *= (1 + (parseFloat(annualIncreaseRate) || 0) / 100);
       }
     }
 
     setChartData(yearlyData);
-    const finalVal = currentTotal + accumulatedDividends;
     setSummary({
-      finalValue: finalVal.toFixed(2),
+      finalValue: currentTotal.toFixed(2),
       totalInvested: totalInvested.toFixed(2),
-      compoundedReturns: (finalVal - totalInvested).toFixed(2),
+      compoundedReturns: (currentTotal - totalInvested).toFixed(2),
       avgDivYield: avgDivYield.toFixed(2),
       avgPriceGrowth: avgPriceGrowth.toFixed(2),
       avgDivGrowth: avgDivGrowth.toFixed(2),
-      annualDividend: (currentTotal * (avgDivYield / 100)).toFixed(2),
+      annualDividend: lastYearTotalDiv.toFixed(2),
       yearsToTarget
     });
   };
@@ -185,18 +184,17 @@ export default function App() {
     <div className="app-container">
       <header className="header">
         <h1>📊 US Portfolio Master Pro</h1>
-        <p>วิเคราะห์แผนการลงทุนจากข้อมูลจริง 10 ปีย้อนหลัง</p>
+        <p>วิเคราะห์ปันผลทบต้นจากข้อมูลจริง (CORS Fixed)</p>
       </header>
 
       <div className="main-grid">
         <div className="control-panel">
-          {/* DRIP Switch */}
           <div className="card drip-card">
             <div className="drip-flex">
               <div>
                 <h3>🔄 ปันผลทบต้น (DRIP)</h3>
                 <p style={{fontSize: '0.75rem', color: isReinvest ? '#10b981' : '#94a3b8'}}>
-                  {isReinvest ? 'เปิด: นำปันผลทบต้นอัตโนมัติ' : 'ปิด: รับปันผลเป็นเงินสด'}
+                  {isReinvest ? 'เปิด: ทบต้นอัตโนมัติ' : 'ปิด: รับเป็นเงินสด'}
                 </p>
               </div>
               <label className="switch">
@@ -206,7 +204,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Investment Settings (ช่องปีห้ามหาย!) */}
           <div className="card">
             <h3>⚙️ ตั้งค่าการลงทุน (USD)</h3>
             <div className="input-group"><label>เงินต้นเริ่มต้น</label><input type="number" value={initialInvestment} onChange={e => setInitialInvestment(e.target.value)} /></div>
@@ -215,7 +212,6 @@ export default function App() {
             <div className="input-group"><label>ระยะเวลาลงทุน (ปี)</label><input type="number" value={years} onChange={e => setYears(e.target.value)} /></div>
           </div>
 
-          {/* Portfolio List */}
           <div className="card">
             <div className="card-header-flex">
               <h3>📈 หุ้นในพอร์ต</h3>
@@ -250,7 +246,6 @@ export default function App() {
         </div>
 
         <div className="dashboard-panel">
-          {/* Summary */}
           <div className="summary-grid">
             <div className="summary-box main">
               <h4>มูลค่าพอร์ตรวม</h4>
@@ -261,27 +256,25 @@ export default function App() {
               </div>
             </div>
             <div className="summary-box">
-              <h4>ปันผลรับ/ปี</h4>
+              <h4>ปันผลรับปีสุดท้าย/ปี</h4>
               <h2 className="text-gold">${Number(summary?.annualDividend).toLocaleString()}</h2>
               <p>Yield เฉลี่ย: {summary?.avgDivYield}%</p>
             </div>
             <div className="summary-box highlight">
-              <h4>อิสรภาพ $35,000</h4>
-              <h2>{summary?.yearsToTarget ? `ปีที่ ${summary.yearsToTarget}` : 'ยังไม่ถึงเป้า'}</h2>
+              <h4>เป้าหมาย $35,000</h4>
+              <h2>{summary?.yearsToTarget ? `ใช้เวลา ${summary.yearsToTarget} ปี` : 'ยังไม่ถึงเป้า'}</h2>
             </div>
           </div>
 
-          {/* Weighted Stats Card */}
           <div className="stats-card">
-            <h3>📊 สถิติเฉลี่ยย้อนหลัง 10 ปี (ถ่วงน้ำหนักตามพอร์ต)</h3>
+            <h3>📊 สถิติเฉลี่ยย้อนหลัง 10 ปี (Weighted)</h3>
             <div className="stats-grid">
-              <div className="stat-item"><span>อัตราปันผลรวม:</span> <strong>{summary?.avgDivYield}%</strong></div>
+              <div className="stat-item"><span>อัตราปันผลเฉลี่ย:</span> <strong>{summary?.avgDivYield}%</strong></div>
               <div className="stat-item"><span>ปันผลเติบโตเฉลี่ย:</span> <strong>{summary?.avgDivGrowth}%</strong></div>
               <div className="stat-item"><span>ราคาหุ้นโตเฉลี่ย:</span> <strong>{summary?.avgPriceGrowth}%</strong></div>
             </div>
           </div>
 
-          {/* Chart */}
           <div className="chart-container">
             <ResponsiveContainer width="100%" height={380}>
               <AreaChart data={chartData}>
