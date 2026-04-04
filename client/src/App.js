@@ -33,7 +33,7 @@ export default function App() {
         divYield: (Math.random() * 3 + 1).toFixed(2), 
         growthRate: (Math.random() * 8 + 4).toFixed(2),
         allocation: portfolio.length === 0 ? 100 : 0,
-        frequency: 4 // ค่าเริ่มต้นเป็นรายไตรมาส (Quarterly)
+        frequency: 4 
       };
       setPortfolio([...portfolio, newStock]);
       setNewTicker('');
@@ -61,33 +61,26 @@ export default function App() {
     let yearlyData = [];
     let yearsToTarget = null;
 
-    const totalMonths = years * 12;
+    const totalMonths = parseInt(years) * 12;
 
     for (let m = 1; m <= totalMonths; m++) {
-      // 1. เติมเงินรายเดือนตอนต้นเดือน
       currentTotal += currentMonthlyDeposit;
       totalInvested += currentMonthlyDeposit;
 
       let monthlyTotalDiv = 0;
       let monthlyTotalGrowth = 0;
 
-      // 2. คำนวณรายหุ้นตามความถี่จริง
       portfolio.forEach(stock => {
         const stockWeight = parseFloat(stock.allocation) / 100;
         const stockValue = currentTotal * stockWeight;
-        
-        // คำนวณการเติบโตของราคา (หาร 12 เดือน)
         monthlyTotalGrowth += stockValue * (parseFloat(stock.growthRate) / 100 / 12);
 
-        // คำนวณปันผลเฉพาะเดือนที่มีการจ่าย (m % รอบเดือน == 0)
-        // รอบเดือน: รายเดือน=1, ไตรมาส=3, ครึ่งปี=6, รายปี=12
         const payCycle = 12 / parseInt(stock.frequency);
         if (m % payCycle === 0) {
           monthlyTotalDiv += stockValue * (parseFloat(stock.divYield) / 100 / parseInt(stock.frequency));
         }
       });
 
-      // 3. ทบต้นหรือเก็บเงินสด
       if (isReinvest) {
         currentTotal += (monthlyTotalDiv + monthlyTotalGrowth);
       } else {
@@ -95,7 +88,6 @@ export default function App() {
         accumulatedDividends += monthlyTotalDiv;
       }
 
-      // 4. สรุปผลรายปี
       if (m % 12 === 0) {
         const yearNum = m / 12;
         const finalYearlyValue = currentTotal + accumulatedDividends;
@@ -104,7 +96,6 @@ export default function App() {
           invested: Math.round(totalInvested),
           totalValue: Math.round(finalYearlyValue),
         });
-
         if (finalYearlyValue >= 35000 && yearsToTarget === null) yearsToTarget = yearNum;
         currentMonthlyDeposit *= (1 + annualIncreaseRate / 100);
       }
@@ -122,8 +113,8 @@ export default function App() {
   return (
     <div className="app-container">
       <header className="header">
-        <h1>📊 Real-Frequency Portfolio Simulator</h1>
-        <p>คำนวณปันผลทบต้นตามรอบการจ่ายจริงของหุ้นแต่ละตัว</p>
+        <h1>📊 US Portfolio Simulator</h1>
+        <p>วิเคราะห์ผลตอบแทนพร้อมระบบปันผลทบต้นตามรอบการจ่ายจริง</p>
       </header>
 
       <div className="main-grid">
@@ -133,7 +124,7 @@ export default function App() {
               <div>
                 <h3>🔄 ระบบปันผลทบต้น (DRIP)</h3>
                 <p style={{fontSize: '0.75rem', color: isReinvest ? '#10b981' : '#94a3b8'}}>
-                  {isReinvest ? 'เปิด: ทบต้นทันทีในเดือนที่จ่าย' : 'ปิด: แยกปันผลเป็นเงินสด'}
+                  {isReinvest ? 'เปิด: ทบต้นตามรอบจริง' : 'ปิด: เก็บปันผลเป็นเงินสด'}
                 </p>
               </div>
               <label className="switch">
@@ -144,9 +135,35 @@ export default function App() {
           </div>
 
           <div className="card">
-            <h3>📈 จัดการหุ้นและรอบปันผล</h3>
+            <h3>⚙️ ตั้งค่าเงินลงทุน (USD)</h3>
+            <div className="input-group">
+              <label>เงินต้นเริ่มต้น</label>
+              <input type="number" value={initialInvestment} onChange={e => setInitialInvestment(e.target.value)} />
+            </div>
+            <div className="input-group">
+              <label>เติมเงินรายเดือน</label>
+              <input type="number" value={monthlyContribution} onChange={e => setMonthlyContribution(e.target.value)} />
+            </div>
+            <div className="input-group">
+              <label>เพิ่มเงินเติมรายปี (%)</label>
+              <input type="number" value={annualIncreaseRate} onChange={e => setAnnualIncreaseRate(e.target.value)} />
+            </div>
+            {/* ช่องที่หายไป กลับมาแล้วครับ 👇 */}
+            <div className="input-group">
+              <label>ระยะเวลาลงทุน (ปี)</label>
+              <input type="number" min="1" max="40" value={years} onChange={e => setYears(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-header-flex">
+              <h3>📈 หุ้นในพอร์ต</h3>
+              <span className={`allocation-badge ${totalAllocation === 100 ? 'success' : 'warning'}`}>
+                รวม {totalAllocation}%
+              </span>
+            </div>
             <div className="add-stock-flex">
-              <input type="text" placeholder="Ticker เช่น O, AAPL" value={newTicker} onChange={e => setNewTicker(e.target.value)} />
+              <input type="text" placeholder="Ticker เช่น O, VOO" value={newTicker} onChange={e => setNewTicker(e.target.value)} />
               <button onClick={handleAddStock} disabled={loading}>+</button>
             </div>
             <div className="stock-list">
@@ -178,16 +195,6 @@ export default function App() {
                 </div>
               ))}
             </div>
-            <div className={`alloc-bar ${totalAllocation === 100 ? 'ok' : 'error'}`}>
-              สัดส่วนพอร์ตรวม: {totalAllocation}%
-            </div>
-          </div>
-
-          <div className="card">
-            <h3>⚙️ ตั้งค่าเงินลงทุน</h3>
-            <div className="input-group"><label>เงินต้นเริ่มต้น (USD)</label><input type="number" value={initialInvestment} onChange={e => setInitialInvestment(e.target.value)} /></div>
-            <div className="input-group"><label>เติมเงินรายเดือน (USD)</label><input type="number" value={monthlyContribution} onChange={e => setMonthlyContribution(e.target.value)} /></div>
-            <div className="input-group"><label>เพิ่มเงินเติมรายปี (%)</label><input type="number" value={annualIncreaseRate} onChange={e => setAnnualIncreaseRate(e.target.value)} /></div>
           </div>
         </div>
 
@@ -199,20 +206,20 @@ export default function App() {
               <p className="text-green">กำไรสะสม: +${Number(summary?.totalReturns).toLocaleString()}</p>
             </div>
             <div className="summary-box highlight">
-              <h4>อิสรภาพทางการเงิน</h4>
-              <h2>{summary?.yearsToTarget ? `ปีที่ ${summary.yearsToTarget}` : 'เกิน 40 ปี'}</h2>
-              <p>ที่มูลค่า $35,000</p>
+              <h4>เป้าหมาย 1 ล้านบาท</h4>
+              <h2>{summary?.yearsToTarget ? `ปีที่ ${summary.yearsToTarget}` : 'เกินกำหนด'}</h2>
             </div>
           </div>
 
           <div className="chart-container">
-            <h3>📊 พลังของดอกเบี้ยทบต้น (Compound Interest)</h3>
+            <h3 style={{marginBottom: '15px'}}>📊 กราฟคาดการณ์การเติบโต</h3>
             <ResponsiveContainer width="100%" height={400}>
               <AreaChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis dataKey="year" stroke="#9ca3af" />
                 <YAxis stroke="#9ca3af" tickFormatter={(v) => `$${v.toLocaleString()}`} />
                 <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }} />
+                <Legend />
                 <Area type="monotone" dataKey="totalValue" name="มูลค่าพอร์ตรวม" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.2} />
                 <Area type="monotone" dataKey="invested" name="เงินต้นรวม" stroke="#10b981" fill="#10b981" fillOpacity={0.1} />
               </AreaChart>
