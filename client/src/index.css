@@ -197,3 +197,79 @@ input:checked + .slider:before { transform: translateX(24px); }
   color: #f8fafc;
   text-align: center;
 }
+
+/* เพิ่มเติมสำหรับการจัดการหุ้นรายตัว */
+.stock-item-advanced {
+  background: #1e293b;
+  padding: 15px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #334155;
+}
+
+.stock-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.input-with-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #0f172a;
+  padding: 5px 10px;
+  border-radius: 6px;
+}
+
+.input-with-label input {
+  width: 45px;
+  background: transparent;
+  border: none;
+  color: #fbbf24;
+  font-weight: bold;
+  text-align: right;
+}
+
+.stock-settings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.setting-col label {
+  display: block;
+  font-size: 0.7rem;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.setting-col input, .setting-col select {
+  width: 100%;
+  padding: 6px;
+  border-radius: 4px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #fff;
+  font-size: 0.85rem;
+}
+
+.alloc-bar {
+  text-align: center;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: bold;
+  margin-top: 10px;
+}
+.alloc-bar.ok { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+.alloc-bar.error { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+
+.btn-close {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
